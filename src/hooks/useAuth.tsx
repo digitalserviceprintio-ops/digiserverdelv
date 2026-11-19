@@ -36,12 +36,8 @@ interface AuthContextValue {
   signingIn: boolean;
   authError: string | null;
   unauthorizedDomain: string | null;
-  pinVerified: boolean;
-  vaultLocked: boolean;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
-  verifyVaultPin: (pin: string) => Promise<{ ok: boolean; error?: string }>;
-  lockVault: () => void;
   logout: () => Promise<void>;
   updateProfileSettings: (updates: Partial<Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   toggleTheme: () => Promise<void>;
@@ -51,7 +47,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const DEFAULT_AVATAR_PATH = '/src/assets/images/avatar_default_owner_1795095756137.jpg';
 const VAULT_AVATAR_PREFIX = 'vault://digivault-files/';
-const LOCK_STORAGE_KEY = 'digivault_vault_locked';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -61,15 +56,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
-  const [pinVerified, setPinVerified] = useState(false);
-  const [vaultLocked, setVaultLocked] = useState(
-    () => localStorage.getItem(LOCK_STORAGE_KEY) === 'true'
-  );
 
   const clearAuthError = () => {
     setAuthError(null);
     setUnauthorizedDomain(null);
   };
+
+  // Clear legacy vault lock key if previously stored
+  useEffect(() => {
+    localStorage.removeItem('digivault_vault_locked');
+  }, []);
 
   // Sync theme to document root
   useEffect(() => {
@@ -190,9 +186,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUnauthorizedDomain(null);
     try {
       await signInWithPopup(auth, googleAuthProvider);
-      localStorage.removeItem(LOCK_STORAGE_KEY);
-      setVaultLocked(false);
-      setPinVerified(true);
       toast.success('Berhasil masuk ke DigiVault');
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || '';
@@ -222,51 +215,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const verifyVaultPin = async (pin: string): Promise<{ ok: boolean; error?: string }> => {
-    setAuthError(null);
-    setUnauthorizedDomain(null);
-    try {
-      const res = await fetch('/api/auth/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.valid) {
-        return {
-          ok: false,
-          error: data.error || `Verifikasi PIN gagal (HTTP ${res.status}).`,
-        };
-      }
-
-      setPinVerified(true);
-      if (user) {
-        localStorage.removeItem(LOCK_STORAGE_KEY);
-        setVaultLocked(false);
-        toast.success('Vault berhasil dibuka dengan PIN');
-      }
-      return { ok: true };
-    } catch {
-      return {
-        ok: false,
-        error: 'Gagal terhubung ke server verifikasi PIN. Periksa koneksi Anda.',
-      };
-    }
-  };
-
-  const lockVault = () => {
-    localStorage.setItem(LOCK_STORAGE_KEY, 'true');
-    setVaultLocked(true);
-    setPinVerified(false);
-    toast.info('DigiVault dikunci. Masukkan PIN untuk membuka kembali.');
-  };
-
   const logout = async () => {
     try {
       await signOut(auth);
-      localStorage.removeItem(LOCK_STORAGE_KEY);
-      setVaultLocked(false);
-      setPinVerified(false);
       toast.success('Anda telah keluar dari DigiVault');
     } catch {
       toast.error('Gagal keluar dari sesi.');
@@ -308,12 +259,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signingIn,
         authError,
         unauthorizedDomain,
-        pinVerified,
-        vaultLocked,
         clearAuthError,
         signInWithGoogle,
-        verifyVaultPin,
-        lockVault,
         logout,
         updateProfileSettings,
         toggleTheme,

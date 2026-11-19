@@ -13,7 +13,6 @@ import {
   PanelLeftOpen,
   Menu,
   X,
-  Lock,
 } from 'lucide-react';
 import { NavSection } from '../../types';
 import { DEFAULT_AVATAR_PATH, useAuth } from '../../hooks/useAuth';
@@ -51,7 +50,7 @@ export function AppShell({
   onGlobalSearchChange,
   children,
 }: AppShellProps) {
-  const { profile, user, resolvedAvatarUrl, lockVault, logout, toggleTheme } = useAuth();
+  const { profile, user, resolvedAvatarUrl, logout, toggleTheme } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -166,22 +165,6 @@ export function AppShell({
             </div>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setMobileOpen(false);
-            lockVault();
-          }}
-          title={collapsed && !isMobile ? 'Kunci PIN' : undefined}
-          className={cn(
-            'w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap cursor-pointer',
-            collapsed && !isMobile && 'justify-center px-2'
-          )}
-        >
-          <Lock className="h-4 w-4 shrink-0" />
-          {(!collapsed || isMobile) && <span>Kunci PIN</span>}
-        </button>
 
         <button
           type="button"

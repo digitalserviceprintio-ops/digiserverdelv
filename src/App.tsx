@@ -19,7 +19,7 @@ import {
 } from './lib/utils';
 
 function DigiVaultWorkspace() {
-  const { user, profile, authLoading, vaultLocked } = useAuth();
+  const { user, profile, authLoading } = useAuth();
   const [activeNav, setActiveNav] = useState<NavSection>('dashboard');
   const [globalSearch, setGlobalSearch] = useState('');
 
@@ -49,7 +49,7 @@ function DigiVaultWorkspace() {
     );
   }
 
-  if (!user || vaultLocked) {
+  if (!user) {
     return <LoginView />;
   }
 

@@ -189,52 +189,6 @@ async function startServer() {
     res.json({ status: 'ok', service: 'DigiVault', timestamp: new Date().toISOString() });
   });
 
-  // In-memory rate limiter for PIN login attempts
-  const pinAttemptTracker = new Map<string, { count: number; resetAt: number }>();
-
-  app.post('/api/auth/verify-pin', (req: Request, res: Response) => {
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
-    const record = pinAttemptTracker.get(clientIp);
-    if (record && now < record.resetAt && record.count >= 10) {
-      const waitSec = Math.ceil((record.resetAt - now) / 1000);
-      return res.status(429).json({
-        valid: false,
-        error: `Terlalu banyak percobaan PIN. Coba lagi dalam ${waitSec} detik.`,
-      });
-    }
-
-    const rawPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
-    const expectedPin = (process.env.VAULT_PIN || '505155').trim();
-
-    if (!/^\d{6}$/.test(rawPin)) {
-      return res.status(400).json({
-        valid: false,
-        error: 'PIN harus terdiri dari 6 digit angka.',
-      });
-    }
-
-    const pinBuf = Buffer.from(rawPin, 'utf8');
-    const expectedBuf = Buffer.from(expectedPin, 'utf8');
-    const isMatch =
-      pinBuf.length === expectedBuf.length && crypto.timingSafeEqual(pinBuf, expectedBuf);
-
-    if (!isMatch) {
-      const nextCount = record && now < record.resetAt ? record.count + 1 : 1;
-      pinAttemptTracker.set(clientIp, {
-        count: nextCount,
-        resetAt: record && now < record.resetAt ? record.resetAt : now + 5 * 60 * 1000,
-      });
-      return res.status(401).json({
-        valid: false,
-        error: 'PIN salah. Periksa kembali 6 digit PIN Anda.',
-      });
-    }
-
-    pinAttemptTracker.delete(clientIp);
-    return res.json({ valid: true });
-  });
-
   // Upload file to private vault storage
   app.post('/api/vault/upload', requireAuth, (req: AuthRequest, res: Response) => {
     uploadMiddleware.single('file')(req, res, async (multerErr) => {
