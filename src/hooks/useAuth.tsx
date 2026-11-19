@@ -34,8 +34,10 @@ interface AuthContextValue {
   resolvedAvatarUrl: string;
   authLoading: boolean;
   signingIn: boolean;
+  authError: string | null;
   pinVerified: boolean;
   vaultLocked: boolean;
+  clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   verifyVaultPin: (pin: string) => Promise<{ ok: boolean; error?: string }>;
   lockVault: () => void;
@@ -56,10 +58,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string>(DEFAULT_AVATAR_PATH);
   const [authLoading, setAuthLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [pinVerified, setPinVerified] = useState(false);
   const [vaultLocked, setVaultLocked] = useState(
     () => localStorage.getItem(LOCK_STORAGE_KEY) === 'true'
   );
+
+  const clearAuthError = () => setAuthError(null);
 
   // Sync theme to document root
   useEffect(() => {
@@ -148,7 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           msg.toLowerCase().includes('offline') ||
           msg.toLowerCase().includes('network');
         if (!isOfflineError) {
-          handleFirestoreError(err, OperationType.WRITE, profilePath);
+          console.error('Profile bootstrap error:', profilePath, err);
+          setAuthError('Gagal memuat profil Firestore. Pastikan domain & aturan Firestore aktif.');
         }
       }
 
@@ -161,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAuthLoading(false);
         },
         (err) => {
+          setAuthLoading(false);
           handleFirestoreError(err, OperationType.GET, profilePath);
         }
       );
@@ -174,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     setSigningIn(true);
+    setAuthError(null);
     try {
       await signInWithPopup(auth, googleAuthProvider);
       localStorage.removeItem(LOCK_STORAGE_KEY);
@@ -181,13 +189,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPinVerified(true);
       toast.success('Berhasil masuk ke DigiVault');
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (code === 'auth/popup-closed-by-user') {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
         toast.info('Proses login dibatalkan.');
       } else if (code === 'auth/popup-blocked') {
-        toast.error('Popup login diblokir browser. Izinkan popup lalu coba lagi.');
+        const msg = 'Popup login diblokir browser. Izinkan popup untuk situs ini lalu coba lagi.';
+        setAuthError(msg);
+        toast.error(msg);
+      } else if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        const msg = `Domain "${host}" belum terdaftar di Authorized Domains Firebase Auth. Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`;
+        setAuthError(msg);
+        toast.error(msg);
+      } else if (code === 'auth/network-request-failed') {
+        const msg = 'Koneksi ke layanan autentikasi gagal. Periksa jaringan internet Anda.';
+        setAuthError(msg);
+        toast.error(msg);
       } else {
-        toast.error('Gagal melakukan autentikasi Google.');
+        const msg = `Gagal autentikasi Google${code ? ` (${code})` : ''}.`;
+        setAuthError(msg);
+        toast.error(msg);
       }
     } finally {
       setSigningIn(false);
@@ -195,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const verifyVaultPin = async (pin: string): Promise<{ ok: boolean; error?: string }> => {
+    setAuthError(null);
     try {
       const res = await fetch('/api/auth/verify-pin', {
         method: 'POST',
@@ -203,7 +225,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.valid) {
-        return { ok: false, error: data.error || 'PIN tidak valid.' };
+        return {
+          ok: false,
+          error: data.error || `Verifikasi PIN gagal (HTTP ${res.status}).`,
+        };
       }
 
       setPinVerified(true);
@@ -273,8 +298,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         resolvedAvatarUrl,
         authLoading,
         signingIn,
+        authError,
         pinVerified,
         vaultLocked,
+        clearAuthError,
         signInWithGoogle,
         verifyVaultPin,
         lockVault,

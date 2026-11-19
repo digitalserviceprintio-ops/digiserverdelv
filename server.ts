@@ -1,20 +1,25 @@
-import express, { Request, Response, NextFunction } from 'express';
-import { createServer as createViteServer } from 'vite';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { initializeApp, getApps } from 'firebase-admin/app';
-import { getAuth, DecodedIdToken } from 'firebase-admin/auth';
-import firebaseConfig from './firebase-applet-config.json';
+import { getAuth } from 'firebase-admin/auth';
+import type { DecodedIdToken } from 'firebase-admin/auth';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const firebaseConfig = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf8')
+) as { projectId: string };
 
 if (!getApps().length) {
   initializeApp({
@@ -24,7 +29,20 @@ if (!getApps().length) {
 
 const adminAuth = getAuth();
 
-const STORAGE_ROOT = path.resolve(__dirname, '.digivault_storage');
+function resolveWritableStorageRoot(): string {
+  const preferred = path.resolve(__dirname, '.digivault_storage');
+  try {
+    fs.mkdirSync(preferred, { recursive: true });
+    fs.accessSync(preferred, fs.constants.W_OK);
+    return preferred;
+  } catch {
+    const fallback = path.join(os.tmpdir(), 'digivault_storage');
+    fs.mkdirSync(fallback, { recursive: true });
+    return fallback;
+  }
+}
+
+const STORAGE_ROOT = resolveWritableStorageRoot();
 const ALLOWED_BUCKETS = new Set(['digivault-files', 'digivault-receipts']);
 
 const FILE_ALLOWED_EXTS = new Set([
@@ -63,13 +81,17 @@ function getSigningSecret(): string {
     return process.env.VAULT_SIGNING_SECRET;
   }
   const secretPath = path.join(STORAGE_ROOT, '.signing_secret');
-  fs.mkdirSync(STORAGE_ROOT, { recursive: true });
-  if (fs.existsSync(secretPath)) {
-    return fs.readFileSync(secretPath, 'utf8').trim();
+  try {
+    fs.mkdirSync(STORAGE_ROOT, { recursive: true });
+    if (fs.existsSync(secretPath)) {
+      return fs.readFileSync(secretPath, 'utf8').trim();
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretPath, generated, { mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.createHash('sha256').update(firebaseConfig.projectId).digest('hex');
   }
-  const generated = crypto.randomBytes(32).toString('hex');
-  fs.writeFileSync(secretPath, generated, { mode: 0o600 });
-  return generated;
 }
 
 const SIGNING_SECRET = getSigningSecret();
@@ -160,6 +182,7 @@ const uploadMiddleware = multer({
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '2mb' }));
 
   app.get('/api/health', (_req, res) => {
@@ -431,7 +454,12 @@ async function startServer() {
     }
   });
 
+  app.use('/api/*', (_req, res) => {
+    return res.status(404).json({ error: 'Endpoint API tidak ditemukan.' });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -474,7 +502,7 @@ async function startServer() {
     });
   }
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`DigiVault server running at http://0.0.0.0:${PORT}`);
   });

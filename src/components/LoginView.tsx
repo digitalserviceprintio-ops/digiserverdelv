@@ -19,6 +19,8 @@ export function LoginView() {
     vaultLocked,
     pinVerified,
     signingIn,
+    authError,
+    clearAuthError,
     signInWithGoogle,
     verifyVaultPin,
     logout,
@@ -159,6 +161,7 @@ export function LoginView() {
                 onClick={() => {
                   setMode('pin');
                   setPinError(null);
+                  clearAuthError();
                 }}
                 className={`rounded-lg py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   mode === 'pin'
@@ -173,6 +176,7 @@ export function LoginView() {
                 onClick={() => {
                   setMode('google');
                   setPinError(null);
+                  clearAuthError();
                 }}
                 className={`rounded-lg py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   mode === 'google'
@@ -316,6 +320,16 @@ export function LoginView() {
               <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
                 Akses privat untuk akun terverifikasi pemilik DigiVault.
               </p>
+            </div>
+          )}
+
+          {authError && (
+            <div
+              role="alert"
+              className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3 text-xs text-red-700 dark:text-red-300"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{authError}</span>
             </div>
           )}
 
