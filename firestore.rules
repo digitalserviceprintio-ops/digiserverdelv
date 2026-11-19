@@ -1,0 +1,282 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Security Primitives ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(ownerUid) {
+      return isVerifiedUser() && request.auth.uid == ownerUid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'fullName', 'email', 'avatarUrl', 'appTitle', 'appTagline',
+        'theme', 'maxUploadMb', 'serviceCategories', 'paymentMethods', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'fullName', 'email', 'avatarUrl', 'appTitle', 'appTagline',
+        'theme', 'maxUploadMb', 'serviceCategories', 'paymentMethods', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.uid)
+      && data.uid == request.auth.uid
+      && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+      && data.avatarUrl is string && data.avatarUrl.size() <= 1000
+      && data.appTitle is string && data.appTitle.size() >= 1 && data.appTitle.size() <= 80
+      && data.appTagline is string && data.appTagline.size() <= 160
+      && data.theme in ['light', 'dark']
+      && (data.maxUploadMb is int || data.maxUploadMb is float) && data.maxUploadMb >= 1 && data.maxUploadMb <= 50
+      && data.serviceCategories is list && data.serviceCategories.size() >= 1 && data.serviceCategories.size() <= 30
+      && data.serviceCategories[0] is string && data.serviceCategories[0].size() <= 120
+      && data.paymentMethods is list && data.paymentMethods.size() >= 1 && data.paymentMethods.size() <= 20
+      && data.paymentMethods[0] is string && data.paymentMethods[0].size() <= 80
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidFolder(data) {
+      return data.keys().hasAll(['userId', 'parentId', 'name', 'createdAt', 'updatedAt'])
+      && data.keys().hasOnly(['userId', 'parentId', 'name', 'createdAt', 'updatedAt'])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && (data.parentId == null || isValidId(data.parentId))
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidArchiveFile(data) {
+      return data.keys().hasAll([
+        'userId', 'folderId', 'fileName', 'originalName', 'storagePath',
+        'mimeType', 'fileSize', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userId', 'folderId', 'fileName', 'originalName', 'storagePath',
+        'mimeType', 'fileSize', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && (data.folderId == null || isValidId(data.folderId))
+      && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 200
+      && data.originalName is string && data.originalName.size() >= 1 && data.originalName.size() <= 255
+      && data.storagePath is string && data.storagePath.size() >= 1 && data.storagePath.size() <= 400
+      && data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 120
+      && (data.fileSize is int || data.fileSize is float) && data.fileSize > 0 && data.fileSize <= 52428800
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidVaultChunk(data) {
+      return data.keys().hasAll([
+        'userId', 'bucket', 'storagePath', 'chunkIndex', 'totalChunks', 'dataBase64', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'userId', 'bucket', 'storagePath', 'chunkIndex', 'totalChunks', 'dataBase64', 'createdAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && data.bucket in ['digivault-files', 'digivault-receipts']
+      && data.storagePath is string && data.storagePath.size() >= 1 && data.storagePath.size() <= 400
+      && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex < 120
+      && data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 120
+      && data.chunkIndex < data.totalChunks
+      && data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 750000
+      && data.createdAt is timestamp;
+    }
+
+    function isValidIncome(data) {
+      return data.keys().hasAll([
+        'userId', 'transactionDate', 'clientName', 'serviceType', 'description',
+        'amount', 'paymentMethod', 'paymentStatus', 'receiptPath', 'receiptName',
+        'receiptMimeType', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userId', 'transactionDate', 'clientName', 'serviceType', 'description',
+        'amount', 'paymentMethod', 'paymentStatus', 'receiptPath', 'receiptName',
+        'receiptMimeType', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && data.transactionDate is string && data.transactionDate.size() == 10 && data.transactionDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      && data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 160
+      && data.serviceType is string && data.serviceType.size() >= 1 && data.serviceType.size() <= 120
+      && data.description is string && data.description.size() <= 1000
+      && (data.amount is int || data.amount is float) && data.amount > 0
+      && data.paymentMethod is string && data.paymentMethod.size() >= 1 && data.paymentMethod.size() <= 80
+      && data.paymentStatus in ['lunas', 'belum_lunas']
+      && data.receiptPath is string && data.receiptPath.size() <= 400
+      && data.receiptName is string && data.receiptName.size() <= 255
+      && data.receiptMimeType is string && data.receiptMimeType.size() <= 120
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: profiles ---
+    match /profiles/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'email', 'avatarUrl', 'appTitle', 'appTagline',
+            'theme', 'maxUploadMb', 'serviceCategories', 'paymentMethods', 'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    // --- Collection: folders ---
+    match /folders/{folderId} {
+      allow get: if isValidId(folderId) && isOwner(existing().userId);
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(folderId)
+        && isVerifiedUser()
+        && isValidFolder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          incoming().parentId == null
+          || (
+            incoming().parentId != folderId
+            && exists(/databases/$(database)/documents/folders/$(incoming().parentId))
+            && get(/databases/$(database)/documents/folders/$(incoming().parentId)).data.userId == request.auth.uid
+          )
+        );
+      allow update: if isValidId(folderId)
+        && isOwner(existing().userId)
+        && isValidFolder(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']))
+          || (
+            incoming().diff(existing()).affectedKeys().hasOnly(['parentId', 'updatedAt'])
+            && (
+              incoming().parentId == null
+              || (
+                incoming().parentId != folderId
+                && exists(/databases/$(database)/documents/folders/$(incoming().parentId))
+                && get(/databases/$(database)/documents/folders/$(incoming().parentId)).data.userId == request.auth.uid
+              )
+            )
+          )
+        );
+      allow delete: if isValidId(folderId) && isOwner(existing().userId);
+    }
+
+    // --- Collection: files ---
+    match /files/{fileId} {
+      allow get: if isValidId(fileId) && isOwner(existing().userId);
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(fileId)
+        && isVerifiedUser()
+        && isValidArchiveFile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          incoming().folderId == null
+          || (
+            exists(/databases/$(database)/documents/folders/$(incoming().folderId))
+            && get(/databases/$(database)/documents/folders/$(incoming().folderId)).data.userId == request.auth.uid
+          )
+        );
+      allow update: if isValidId(fileId)
+        && isOwner(existing().userId)
+        && isValidArchiveFile(incoming())
+        && incoming().userId == existing().userId
+        && incoming().storagePath == existing().storagePath
+        && incoming().originalName == existing().originalName
+        && incoming().mimeType == existing().mimeType
+        && incoming().fileSize == existing().fileSize
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['fileName', 'updatedAt'])
+          || (
+            incoming().diff(existing()).affectedKeys().hasOnly(['folderId', 'updatedAt'])
+            && (
+              incoming().folderId == null
+              || (
+                exists(/databases/$(database)/documents/folders/$(incoming().folderId))
+                && get(/databases/$(database)/documents/folders/$(incoming().folderId)).data.userId == request.auth.uid
+              )
+            )
+          )
+        );
+      allow delete: if isValidId(fileId) && isOwner(existing().userId);
+    }
+
+    // --- Collection: vaultChunks ---
+    match /vaultChunks/{chunkId} {
+      allow get: if isValidId(chunkId) && isOwner(existing().userId);
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(chunkId)
+        && isVerifiedUser()
+        && isValidVaultChunk(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(chunkId) && isOwner(existing().userId);
+    }
+
+    // --- Collection: incomes ---
+    match /incomes/{incomeId} {
+      allow get: if isValidId(incomeId) && isOwner(existing().userId);
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(incomeId)
+        && isVerifiedUser()
+        && isValidIncome(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(incomeId)
+        && isOwner(existing().userId)
+        && isValidIncome(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'transactionDate', 'clientName', 'serviceType', 'description',
+            'amount', 'paymentMethod', 'paymentStatus',
+            'receiptPath', 'receiptName', 'receiptMimeType', 'updatedAt'
+          ])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'updatedAt'])
+        );
+      allow delete: if isValidId(incomeId) && isOwner(existing().userId);
+    }
+  }
+}

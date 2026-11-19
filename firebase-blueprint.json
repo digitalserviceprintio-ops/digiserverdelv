@@ -1,0 +1,319 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "Personal vault owner profile and application preferences",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Owner display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Owner email address",
+          "maxLength": 254
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Profile avatar URL or vault:// storage reference",
+          "maxLength": 1000
+        },
+        "appTitle": {
+          "type": "string",
+          "description": "Custom vault title",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "appTagline": {
+          "type": "string",
+          "description": "Custom vault tagline",
+          "maxLength": 160
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark"],
+          "description": "Preferred UI theme"
+        },
+        "maxUploadMb": {
+          "type": "number",
+          "description": "Maximum upload file size in megabytes (1-50)"
+        },
+        "serviceCategories": {
+          "type": "array",
+          "description": "Custom freelance service categories"
+        },
+        "paymentMethods": {
+          "type": "array",
+          "description": "Custom freelance payment methods"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "email",
+        "avatarUrl",
+        "appTitle",
+        "appTagline",
+        "theme",
+        "maxUploadMb",
+        "serviceCategories",
+        "paymentMethods",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "Hierarchical archive folder owned by a user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "parentId": {
+          "type": "string",
+          "description": "Optional parent folder ID or null for root",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "parentId", "name", "createdAt", "updatedAt"]
+    },
+    "ArchiveFile": {
+      "title": "ArchiveFile",
+      "description": "Digital document metadata stored in private vault storage",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "folderId": {
+          "type": "string",
+          "description": "Parent folder ID or null for root",
+          "maxLength": 128
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "originalName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "storagePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "fileSize": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "folderId",
+        "fileName",
+        "originalName",
+        "storagePath",
+        "mimeType",
+        "fileSize",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VaultChunk": {
+      "title": "VaultChunk",
+      "description": "Cloud-persisted base64 file chunk for cross-device document and receipt availability",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bucket": {
+          "type": "string",
+          "enum": ["digivault-files", "digivault-receipts"]
+        },
+        "storagePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "chunkIndex": {
+          "type": "number"
+        },
+        "totalChunks": {
+          "type": "number"
+        },
+        "dataBase64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 750000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "bucket",
+        "storagePath",
+        "chunkIndex",
+        "totalChunks",
+        "dataBase64",
+        "createdAt"
+      ]
+    },
+    "Income": {
+      "title": "Income",
+      "description": "Freelance income transaction record",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "transactionDate": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "maxLength": 10
+        },
+        "clientName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "serviceType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "amount": {
+          "type": "number"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["lunas", "belum_lunas"]
+        },
+        "receiptPath": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "receiptName": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "receiptMimeType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "transactionDate",
+        "clientName",
+        "serviceType",
+        "description",
+        "amount",
+        "paymentMethod",
+        "paymentStatus",
+        "receiptPath",
+        "receiptName",
+        "receiptMimeType",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Owner profile and application settings document"
+    },
+    "/folders/{folderId}": {
+      "schema": { "$ref": "#/entities/Folder" },
+      "description": "User-owned digital archive folders"
+    },
+    "/files/{fileId}": {
+      "schema": { "$ref": "#/entities/ArchiveFile" },
+      "description": "User-owned digital document metadata"
+    },
+    "/vaultChunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/VaultChunk" },
+      "description": "Cloud-persisted binary chunks for cross-device file and receipt recovery"
+    },
+    "/incomes/{incomeId}": {
+      "schema": { "$ref": "#/entities/Income" },
+      "description": "User-owned freelance income transactions"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "DigiVault",
+  "description": "Your Documents. Your Income. One Vault. Aplikasi pribadi untuk mengelola arsip dokumen digital dan mencatat pendapatan jasa freelance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
