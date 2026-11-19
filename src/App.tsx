@@ -38,7 +38,7 @@ function DigiVaultWorkspace() {
     updateIncome,
     toggleIncomeStatus,
     deleteIncomeRecord,
-  } = useVaultData(user?.uid);
+  } = useVaultData(user?.emailVerified ? user.uid : undefined);
 
   if (authLoading) {
     return (
@@ -49,7 +49,7 @@ function DigiVaultWorkspace() {
     );
   }
 
-  if (!user) {
+  if (!user || !user.emailVerified) {
     return <LoginView />;
   }
 

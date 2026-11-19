@@ -248,7 +248,7 @@ export function SettingsView() {
 
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-              Email Akun (Terverifikasi Google)
+              Email Akun (Terverifikasi)
             </label>
             <input
               type="email"
@@ -481,7 +481,7 @@ export function SettingsView() {
               Keamanan & Sesi Akun
             </h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
-              Autentikasi dikelola oleh Firebase Authentication (Google Sign-In terverifikasi). Pengelolaan sandi atau aktivasi metode login tambahan dapat dikonfigurasi langsung melalui akun Google atau Firebase Console proyek Anda.
+              Autentikasi dikelola oleh Firebase Authentication (Email/Password & Google Sign-In terverifikasi). Pengaturan provider login dan kata sandi dapat dikelola melalui menu reset password pada layar login atau Firebase Console proyek Anda.
             </p>
           </div>
         </div>

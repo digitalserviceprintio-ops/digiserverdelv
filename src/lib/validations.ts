@@ -79,3 +79,28 @@ export function hasAllowedExtension(filename: string, allowed: string[]): boolea
   const ext = parts.pop() || '';
   return allowed.includes(ext);
 }
+
+export const loginSchema = z.object({
+  email: z.string().trim().email('Format alamat email tidak valid'),
+  password: z.string().min(6, 'Password minimal 6 karakter'),
+});
+
+export const registerSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(2, 'Nama lengkap minimal 2 karakter')
+      .max(120, 'Nama lengkap maksimal 120 karakter'),
+    email: z.string().trim().email('Format alamat email tidak valid'),
+    password: z
+      .string()
+      .min(6, 'Password minimal 6 karakter')
+      .max(128, 'Password maksimal 128 karakter'),
+    confirmPassword: z.string().min(1, 'Konfirmasi password wajib diisi'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Konfirmasi password tidak cocok',
+    path: ['confirmPassword'],
+  });
+
