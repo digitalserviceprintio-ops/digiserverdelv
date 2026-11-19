@@ -2,12 +2,16 @@ import React, { useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
+  Copy,
+  ExternalLink,
   Eye,
   EyeOff,
   KeyRound,
   Loader2,
   Server,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { useAuth } from '../hooks/useAuth';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
 
@@ -20,6 +24,7 @@ export function LoginView() {
     pinVerified,
     signingIn,
     authError,
+    unauthorizedDomain,
     clearAuthError,
     signInWithGoogle,
     verifyVaultPin,
@@ -326,10 +331,45 @@ export function LoginView() {
           {authError && (
             <div
               role="alert"
-              className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3 text-xs text-red-700 dark:text-red-300"
+              className="mt-4 space-y-2.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3.5 text-xs text-red-700 dark:text-red-300"
             >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{authError}</span>
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{authError}</span>
+              </div>
+              {unauthorizedDomain && (
+                <div className="space-y-2 border-t border-red-200/70 dark:border-red-800/60 pt-2">
+                  <p className="text-[11px] leading-relaxed text-red-700/90 dark:text-red-200/90">
+                    Tambahkan domain di bawah ini ke{' '}
+                    <strong>Firebase Console → Authentication → Settings → Authorized domains</strong>:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded-lg bg-white/80 dark:bg-slate-900/80 px-2.5 py-1.5 font-mono text-[11px] text-slate-900 dark:text-slate-100 border border-red-200 dark:border-red-800">
+                      {unauthorizedDomain}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(unauthorizedDomain);
+                        toast.success('Domain disalin ke clipboard');
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-50 cursor-pointer shrink-0"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Salin
+                    </button>
+                  </div>
+                  <a
+                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold underline underline-offset-4 hover:opacity-80"
+                  >
+                    Buka Authorized Domains di Firebase Console
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              )}
             </div>
           )}
 

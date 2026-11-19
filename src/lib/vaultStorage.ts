@@ -20,12 +20,49 @@ export interface UploadedVaultFile {
 
 const CHUNK_BYTE_SIZE = 450 * 1024; // 450 KB raw -> ~600 KB base64 (safely below Firestore 1 MB doc limit)
 
-async function getBearerToken(): Promise<string> {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error('Sesi autentikasi tidak ditemukan. Silakan login kembali.');
+const FILE_ALLOWED_EXTS = new Set([
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.jpg', '.jpeg', '.png', '.webp', '.txt', '.zip',
+]);
+
+const RECEIPT_ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.pdf']);
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.txt': 'text/plain; charset=utf-8',
+  '.zip': 'application/zip',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
+function getExtension(name: string): string {
+  const idx = name.lastIndexOf('.');
+  return idx >= 0 ? name.slice(idx).toLowerCase() : '';
+}
+
+function inferMimeType(fileNameOrPath: string, fallback = 'application/octet-stream'): string {
+  const ext = getExtension(fileNameOrPath);
+  return MIME_BY_EXT[ext] || fallback;
+}
+
+function sanitizeFileName(name: string): string {
+  const base = name.split(/[\\/]/).pop() || 'dokumen';
+  return base.replace(/[^\w.\-() ]+/g, '_').replace(/\s+/g, '_').slice(0, 140) || 'dokumen';
+}
+
+function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
   }
-  return await user.getIdToken();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -124,30 +161,53 @@ export async function uploadToVault(
   if (!user) {
     throw new Error('Sesi autentikasi tidak ditemukan. Silakan login kembali.');
   }
-  const token = await user.getIdToken();
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('bucket', bucket);
-  formData.append('maxSizeMb', String(maxSizeMb));
 
-  const res = await fetch('/api/vault/upload', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || 'Gagal mengunggah file ke private storage.');
+  const safeLimitMb = Math.min(Math.max(maxSizeMb || 20, 1), 50);
+  if (file.size <= 0) {
+    throw new Error('File kosong tidak dapat diunggah.');
   }
-  const uploaded = data as UploadedVaultFile;
+  if (file.size > safeLimitMb * 1024 * 1024) {
+    throw new Error(`Ukuran file melebihi batas maksimal ${safeLimitMb} MB.`);
+  }
 
-  // Persist binary chunks in Cloud Firestore so file is available across all devices and server restarts
-  await persistChunksToFirestore(user.uid, bucket, uploaded.storagePath, file);
+  const ext = getExtension(file.name);
+  const allowedExts = bucket === 'digivault-receipts' ? RECEIPT_ALLOWED_EXTS : FILE_ALLOWED_EXTS;
+  if (!allowedExts.has(ext)) {
+    throw new Error(`Format file ${ext || 'tanpa ekstensi'} tidak didukung pada penyimpanan ini.`);
+  }
 
-  return uploaded;
+  const safeName = sanitizeFileName(file.name);
+  const storagePath = `${user.uid}/${generateUuid()}_${safeName}`;
+  const mimeType = file.type || inferMimeType(file.name);
+
+  // Persist binary chunks directly in Cloud Firestore (works on Vercel serverless up to 50 MB without payload limits)
+  await persistChunksToFirestore(user.uid, bucket, storagePath, file);
+
+  // Best-effort warm local Express server cache when available & under serverless body limit
+  if (file.size <= 3.5 * 1024 * 1024) {
+    try {
+      const token = await user.getIdToken();
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('bucket', bucket);
+      formData.append('storagePath', storagePath);
+      await fetch('/api/vault/restore', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+    } catch {
+      // Optional local cache; Cloud Firestore chunks are authoritative
+    }
+  }
+
+  return {
+    bucket,
+    storagePath,
+    originalName: file.name,
+    mimeType,
+    fileSize: file.size,
+  };
 }
 
 export async function getVaultSignedUrl(
@@ -160,10 +220,11 @@ export async function getVaultSignedUrl(
   if (!user) {
     throw new Error('Sesi autentikasi tidak ditemukan. Silakan login kembali.');
   }
-  const token = await user.getIdToken();
 
-  const requestSigned = async () =>
-    fetch('/api/vault/signed-url', {
+  // Try Express signed URL first when running on persistent backend
+  try {
+    const token = await user.getIdToken();
+    const res = await fetch('/api/vault/signed-url', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,40 +238,26 @@ export async function getVaultSignedUrl(
       }),
     });
 
-  let res = await requestSigned();
-
-  // If file is missing on this server instance (new device / container restart), hydrate from Cloud Firestore
-  if (res.status === 404) {
-    const blob = await reconstructFileFromFirestore(user.uid, storagePath);
-    if (blob) {
-      try {
-        const restoreForm = new FormData();
-        restoreForm.append('file', blob, downloadName || 'dokumen');
-        restoreForm.append('bucket', bucket);
-        restoreForm.append('storagePath', storagePath);
-        const restoreRes = await fetch('/api/vault/restore', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: restoreForm,
-        });
-        if (restoreRes.ok) {
-          res = await requestSigned();
-        }
-      } catch {
-        // Fallback to direct in-memory Blob URL when offline or unreachable
-        return {
-          signedUrl: URL.createObjectURL(blob),
-          expiresAt: Date.now() + 5 * 60 * 1000,
-        };
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.signedUrl) {
+        return data as { signedUrl: string; expiresAt: number };
       }
     }
+  } catch {
+    // Fall back to direct Cloud Firestore reconstruction (Vercel / offline / cold container)
   }
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || 'Gagal membuat signed URL untuk mengakses file.');
+  const mimeType = inferMimeType(downloadName || storagePath);
+  const blob = await reconstructFileFromFirestore(user.uid, storagePath, mimeType);
+  if (!blob) {
+    throw new Error('File tidak ditemukan di penyimpanan cloud.');
   }
-  return data as { signedUrl: string; expiresAt: number };
+
+  return {
+    signedUrl: URL.createObjectURL(blob),
+    expiresAt: Date.now() + 15 * 60 * 1000,
+  };
 }
 
 export async function deleteFromVault(
@@ -235,23 +282,22 @@ export async function deleteFromVault(
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'vaultChunks');
     }
-  }
 
-  const token = await getBearerToken();
-  const res = await fetch('/api/vault/delete', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      bucket,
-      storagePath,
-    }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || 'Gagal menghapus file fisik dari private storage.');
+    try {
+      const token = await user.getIdToken();
+      await fetch('/api/vault/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bucket,
+          storagePath,
+        }),
+      });
+    } catch {
+      // Optional local cache cleanup
+    }
   }
 }

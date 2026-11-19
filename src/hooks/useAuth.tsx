@@ -35,6 +35,7 @@ interface AuthContextValue {
   authLoading: boolean;
   signingIn: boolean;
   authError: string | null;
+  unauthorizedDomain: string | null;
   pinVerified: boolean;
   vaultLocked: boolean;
   clearAuthError: () => void;
@@ -59,12 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
   const [pinVerified, setPinVerified] = useState(false);
   const [vaultLocked, setVaultLocked] = useState(
     () => localStorage.getItem(LOCK_STORAGE_KEY) === 'true'
   );
 
-  const clearAuthError = () => setAuthError(null);
+  const clearAuthError = () => {
+    setAuthError(null);
+    setUnauthorizedDomain(null);
+  };
 
   // Sync theme to document root
   useEffect(() => {
@@ -182,6 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     setSigningIn(true);
     setAuthError(null);
+    setUnauthorizedDomain(null);
     try {
       await signInWithPopup(auth, googleAuthProvider);
       localStorage.removeItem(LOCK_STORAGE_KEY);
@@ -198,7 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast.error(msg);
       } else if (code === 'auth/unauthorized-domain') {
         const host = typeof window !== 'undefined' ? window.location.hostname : '';
-        const msg = `Domain "${host}" belum terdaftar di Authorized Domains Firebase Auth. Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`;
+        setUnauthorizedDomain(host || null);
+        const msg = `Domain "${host}" belum terdaftar di Authorized Domains Firebase Authentication.`;
         setAuthError(msg);
         toast.error(msg);
       } else if (code === 'auth/network-request-failed') {
@@ -217,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyVaultPin = async (pin: string): Promise<{ ok: boolean; error?: string }> => {
     setAuthError(null);
+    setUnauthorizedDomain(null);
     try {
       const res = await fetch('/api/auth/verify-pin', {
         method: 'POST',
@@ -299,6 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authLoading,
         signingIn,
         authError,
+        unauthorizedDomain,
         pinVerified,
         vaultLocked,
         clearAuthError,
